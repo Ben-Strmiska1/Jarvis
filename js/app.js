@@ -539,12 +539,29 @@
   });
 
   // ---------- export / import ----------
-  el.exportBtn.addEventListener("click", () => {
-    const blob = new Blob([JSON.stringify(items, null, 2)], { type: "application/json" });
+  el.exportBtn.addEventListener("click", async () => {
+    const filename = `jarvis-hub-backup-${new Date().toISOString().slice(0, 10)}.json`;
+    const data = JSON.stringify(items, null, 2);
+
+    // When running inside a claude.ai Artifact, plain <a download> links are
+    // sandboxed and silently do nothing — use the platform's save capability instead.
+    if (window.claude && typeof window.claude.use === "function") {
+      try {
+        const downloads = await window.claude.use("downloads");
+        if (downloads) {
+          await downloads.save({ filename, data });
+          return;
+        }
+      } catch (e) {
+        // declined/unavailable/etc — fall through to the normal browser download below
+      }
+    }
+
+    const blob = new Blob([data], { type: "application/json" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `jarvis-hub-backup-${new Date().toISOString().slice(0, 10)}.json`;
+    a.download = filename;
     a.click();
     URL.revokeObjectURL(url);
   });
