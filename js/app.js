@@ -798,25 +798,65 @@
     const n = study.notes.find((x) => x.id === id);
     if (!n) return;
     if (!confirm(`Delete note "${n.title}"?`)) return;
+    for (const att of n.attachments || []) deleteFileBlob(att.id);
     study.notes = study.notes.filter((x) => x.id !== id);
     saveStudy();
     renderNotes();
   }
 
-  // ---- file attachments (Claude artifact `assets` capability, Artifact-only) ----
-  let assetsFn = null;
-  let assetsChecked = false;
+  // ---- file attachments ----
+  // Stored in IndexedDB (works for any file type/size in both the installed copy
+  // and the Claude-hosted artifact — no capability restrictions on file type).
+  const FILES_DB_NAME = "jarvis-hub-files";
+  const FILES_STORE = "attachments";
+  const MAX_ATTACHMENT_BYTES = 50 * 1024 * 1024; // 50MB per file, generous but bounded
+  let filesDbPromise = null;
 
-  async function ensureAssets() {
-    if (assetsChecked) return assetsFn;
-    assetsChecked = true;
-    if (!(window.claude && typeof window.claude.use === "function")) return null;
-    try {
-      assetsFn = await window.claude.use("assets");
-    } catch (e) {
-      assetsFn = null;
-    }
-    return assetsFn;
+  function openFilesDb() {
+    if (filesDbPromise) return filesDbPromise;
+    filesDbPromise = new Promise((resolve, reject) => {
+      if (!("indexedDB" in window)) {
+        reject(new Error("This browser doesn't support file storage (IndexedDB)."));
+        return;
+      }
+      const req = indexedDB.open(FILES_DB_NAME, 1);
+      req.onupgradeneeded = () => {
+        req.result.createObjectStore(FILES_STORE, { keyPath: "id" });
+      };
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => reject(req.error || new Error("Could not open file storage."));
+    });
+    return filesDbPromise;
+  }
+
+  async function storeFileBlob(id, blob) {
+    const db = await openFilesDb();
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(FILES_STORE, "readwrite");
+      tx.objectStore(FILES_STORE).put({ id, blob });
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error || new Error("Could not save file."));
+    });
+  }
+
+  async function getFileBlob(id) {
+    const db = await openFilesDb();
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(FILES_STORE, "readonly");
+      const req = tx.objectStore(FILES_STORE).get(id);
+      req.onsuccess = () => resolve(req.result ? req.result.blob : null);
+      req.onerror = () => reject(req.error || new Error("Could not read file."));
+    });
+  }
+
+  async function deleteFileBlob(id) {
+    const db = await openFilesDb();
+    return new Promise((resolve) => {
+      const tx = db.transaction(FILES_STORE, "readwrite");
+      tx.objectStore(FILES_STORE).delete(id);
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => resolve(); // non-fatal — the reference is removed either way
+    });
   }
 
   function formatFileSize(bytes) {
@@ -829,20 +869,19 @@
   async function uploadFilesToNote(note, fileList) {
     const files = Array.from(fileList || []);
     if (!files.length) return;
-    const assets = await ensureAssets();
-    if (!assets) {
-      alert(`File attachments aren't available in this copy of the hub — use the AI-enabled hosted version to attach files:\n${ARTIFACT_URL}`);
-      return;
-    }
     for (const file of files) {
+      if (file.size > MAX_ATTACHMENT_BYTES) {
+        alert(`"${file.name}" is ${formatFileSize(file.size)} — attachments are capped at ${formatFileSize(MAX_ATTACHMENT_BYTES)}.`);
+        continue;
+      }
+      const id = uid();
       try {
-        const result = await assets.upload(file);
+        await storeFileBlob(id, file);
         note.attachments.push({
-          id: result.id,
-          url: result.url,
+          id,
           filename: file.name,
-          contentType: result.contentType,
-          sizeBytes: result.sizeBytes,
+          contentType: file.type || "application/octet-stream",
+          sizeBytes: file.size,
         });
       } catch (err) {
         alert(`Could not attach "${file.name}": ${err && err.message ? err.message : "unknown error"}`);
@@ -850,6 +889,38 @@
     }
     saveStudy();
     renderNotes();
+  }
+
+  async function downloadAttachment(att) {
+    let blob;
+    try {
+      blob = await getFileBlob(att.id);
+    } catch (err) {
+      alert(`Could not read "${att.filename}": ${err && err.message ? err.message : "unknown error"}`);
+      return;
+    }
+    if (!blob) {
+      alert(`"${att.filename}" is missing from this browser's storage (attachments don't sync between devices/browsers).`);
+      return;
+    }
+    // Inside a Claude Artifact, plain <a download> links are sandboxed — use the platform save capability there.
+    if (window.claude && typeof window.claude.use === "function") {
+      try {
+        const downloads = await window.claude.use("downloads");
+        if (downloads) {
+          await downloads.save({ filename: att.filename, data: blob });
+          return;
+        }
+      } catch (e) {
+        // fall through to the normal browser download below
+      }
+    }
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = att.filename;
+    a.click();
+    URL.revokeObjectURL(url);
   }
 
   let pendingAttachNoteId = null;
@@ -893,17 +964,11 @@
       for (const att of n.attachments || []) {
         const chip = document.createElement("span");
         chip.className = "attachment-chip";
-        chip.innerHTML = `<a href="${escapeAttr(att.url)}" target="_blank" rel="noopener noreferrer">📄 ${escapeHtml(att.filename)}</a><span>${formatFileSize(att.sizeBytes)}</span><button class="remove-attachment" title="Remove">✕</button>`;
+        chip.innerHTML = `<button class="attachment-download" type="button">📄 ${escapeHtml(att.filename)}</button><span>${formatFileSize(att.sizeBytes)}</span><button class="remove-attachment" title="Remove">✕</button>`;
+        chip.querySelector(".attachment-download").addEventListener("click", () => downloadAttachment(att));
         chip.querySelector(".remove-attachment").addEventListener("click", async () => {
           if (!confirm(`Remove attachment "${att.filename}"?`)) return;
-          const assets = await ensureAssets();
-          if (assets) {
-            try {
-              await assets.delete(att.id);
-            } catch (e) {
-              // continue removing the reference even if the remote delete fails
-            }
-          }
+          await deleteFileBlob(att.id);
           n.attachments = (n.attachments || []).filter((a) => a.id !== att.id);
           saveStudy();
           renderNotes();
@@ -932,13 +997,6 @@
     e.target.reset();
     document.getElementById("nTitle").focus();
   });
-
-  (function initFileHint() {
-    const hint = document.getElementById("nFileHint");
-    const link = document.getElementById("nFileHintLink");
-    link.href = ARTIFACT_URL;
-    if (!(window.claude && typeof window.claude.use === "function")) hint.hidden = false;
-  })();
 
   // ==================================================================
   // Study Guides
