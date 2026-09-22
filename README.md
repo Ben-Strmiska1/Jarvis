@@ -24,12 +24,25 @@ A single central hub to track every assignment, quiz, test, project, and exam ac
 
 ## Installing as an app
 
-The hub is a Progressive Web App (manifest + service worker + icons already included), so it can be installed like a native app — but it needs to be served over **https** first, which GitHub Pages gives you for free:
+The hub is a Progressive Web App (manifest + service worker + icons already included), so it can be installed like a native app — but it needs to be served over **https** first.
 
-1. On GitHub: **Settings → Pages** → under "Build and deployment", set **Source** to "Deploy from a branch", pick this branch (or `main`, once merged) and folder `/ (root)` → **Save**.
-2. GitHub gives you a URL like `https://<your-username>.github.io/Jarvis/`. Open it once to confirm it loads.
-3. **On your phone** (Safari on iOS, Chrome on Android): open that URL → Share/menu → **Add to Home Screen**. It'll launch full-screen like a normal app.
+### Full install via GitHub Pages (real PWA, works offline)
+
+A workflow (`.github/workflows/pages.yml`) deploys the repo to GitHub Pages automatically on every push — but creating a *brand-new* Pages site the first time needs one manual click that a workflow's token isn't allowed to do on its own:
+
+1. On GitHub: **Settings → Pages** → under "Build and deployment", set **Source** to **GitHub Actions** → that's it, no branch/folder picking needed.
+2. Push anything to the branch (or re-run the "Deploy to GitHub Pages" workflow from the Actions tab) — it'll now succeed and give you a URL like `https://<your-username>.github.io/Jarvis/`.
+3. **On your phone** (Safari on iOS, Chrome on Android): open that URL → Share/menu → **Add to Home Screen**.
 4. **On your laptop** (Chrome/Edge): open the URL → click the **install icon** in the address bar (or menu → "Install Jarvis…"). It opens in its own window, pinned to your dock/taskbar.
+
+### Quick install with no setup (any page, works today)
+
+Works for the [Claude-hosted version](https://claude.ai/artifact/BhQXyuT9jqsBZtsvXTU6KX) right now, no GitHub Pages needed:
+
+- **Chrome**: open the link → **⋮ menu → Cast, save, and share → Install page as app** (or **More tools → Create shortcut**, check **"Open as window"**).
+- **Edge**: open the link → **⋯ menu → Apps → Install this site as an app**.
+
+This pins an app-style icon to your desktop/taskbar that opens in its own window — no offline support (needs claude.ai), but zero setup.
 
 Two versions will exist once you do this — the installed app (this repo, works offline, no AI chat) and the [Claude-hosted version](https://claude.ai/artifact/BhQXyuT9jqsBZtsvXTU6KX) (has the AI chat, needs claude.ai). Their data does **not** sync with each other — each keeps its own `localStorage`. Use Export/Import to move data between them.
 
