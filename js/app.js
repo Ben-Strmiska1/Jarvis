@@ -1440,6 +1440,46 @@
     }
   });
 
+  // ---------- auto-sync from the Claude-hosted page's private db ----------
+  // The scheduled calendar sync writes assignments to the `assignments` collection;
+  // merge them in by id, keeping the local completion status.
+  async function subscribeToSyncedAssignments() {
+    if (!(window.claude && typeof window.claude.use === "function")) return;
+    let db;
+    try {
+      db = await window.claude.use("db");
+    } catch (e) {
+      return;
+    }
+    if (!db) return;
+    db.collection("assignments").onSnapshot(
+      (snap) => {
+        const byId = new Map(items.map((i) => [i.id, i]));
+        let changed = false;
+        for (const doc of snap.docs) {
+          const raw = doc.data();
+          if (!raw || !raw.title) continue;
+          const existing = byId.get(doc.id);
+          if (existing) {
+            const before = JSON.stringify(existing);
+            Object.assign(existing, raw, { id: doc.id, status: existing.status });
+            if (JSON.stringify(existing) !== before) changed = true;
+          } else {
+            const newItem = { ...raw, id: doc.id, status: raw.status || "todo" };
+            items.push(newItem);
+            byId.set(doc.id, newItem);
+            changed = true;
+          }
+        }
+        if (changed) {
+          save();
+          render();
+        }
+      },
+      () => {}
+    );
+  }
+
   // ---------- installable app (service worker) ----------
   function registerServiceWorker() {
     if (!("serviceWorker" in navigator)) return;
@@ -1451,4 +1491,5 @@
   initTheme();
   render();
   registerServiceWorker();
+  subscribeToSyncedAssignments();
 })();
