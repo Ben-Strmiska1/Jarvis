@@ -153,6 +153,7 @@
           </select>
           <button type="submit" class="primary-btn">+ Add</button>
         </form>
+        <input id="fUrl" type="url" placeholder="Link (optional) — assignment page URL, so the title opens it directly" />
         <textarea id="fNotes" placeholder="Notes (optional) — details, chapters, links…"></textarea>
       </section>
 
@@ -277,7 +278,7 @@
     <button class="item-check" title="Mark complete"></button>
     <div class="item-body">
       <div class="item-top">
-        <span class="item-title"></span>
+        <a class="item-title" href="#"></a>
         <span class="item-badge item-type"></span>
         <span class="item-badge item-priority"></span>
       </div>
@@ -322,6 +323,7 @@
         <option value="in-progress">In progress</option>
         <option value="done">Done</option>
       </select>
+      <input id="eUrl" type="url" placeholder="Link (optional) — assignment page URL" />
       <textarea id="eNotes" placeholder="Notes"></textarea>
       <div class="modal-actions">
         <button type="button" id="eCancel" class="ghost-btn">Cancel</button>

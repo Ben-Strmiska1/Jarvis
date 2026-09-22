@@ -6,7 +6,7 @@
   const THEME_KEY = "jarvis.hub.theme";
   const ARTIFACT_URL = "https://claude.ai/artifact/BhQXyuT9jqsBZtsvXTU6KX";
 
-  /** @typedef {{id:string,title:string,subject:string,type:string,dueDate:string,dueTime:string,priority:string,status:string,notes:string,createdAt:number}} Item */
+  /** @typedef {{id:string,title:string,subject:string,type:string,dueDate:string,dueTime:string,priority:string,status:string,url:string,notes:string,createdAt:number}} Item */
 
   /** @type {Item[]} */
   let items = load();
@@ -74,6 +74,13 @@
     return { date: `${y}-${mo}-${d}`, time: h ? `${h}:${mi}` : "" };
   }
 
+  function extractIcsUrl(ev) {
+    if (ev.URL) return unescapeICS(ev.URL).trim();
+    const desc = unescapeICS(ev.DESCRIPTION || "");
+    const m = desc.match(/https?:\/\/[^\s)]+/);
+    return m ? m[0].replace(/[.,;]+$/, "") : "";
+  }
+
   function icsEventToItem(ev) {
     const rawSummary = unescapeICS(ev.SUMMARY || "").trim();
     if (!rawSummary) return null;
@@ -107,6 +114,7 @@
       dueTime: dt.time,
       priority: "medium",
       status: "todo",
+      url: extractIcsUrl(ev),
       notes: unescapeICS(ev.DESCRIPTION || ""),
       createdAt: Date.now(),
     };
@@ -438,7 +446,23 @@
     check.textContent = item.status === "done" ? "✓" : "";
     check.addEventListener("click", () => toggleDone(item.id));
 
-    node.querySelector(".item-title").textContent = item.title;
+    const titleEl = node.querySelector(".item-title");
+    titleEl.textContent = item.title;
+    if (item.url) {
+      titleEl.href = item.url;
+      titleEl.target = "_blank";
+      titleEl.rel = "noopener noreferrer";
+      titleEl.classList.add("has-link");
+      titleEl.title = "Open assignment in a new tab";
+    } else {
+      titleEl.removeAttribute("href");
+      titleEl.classList.remove("has-link");
+      titleEl.title = "Edit";
+      titleEl.addEventListener("click", (e) => {
+        e.preventDefault();
+        openEdit(item.id);
+      });
+    }
 
     const typeBadge = node.querySelector(".item-type");
     typeBadge.textContent = item.type;
@@ -496,6 +520,7 @@
       dueTime: data.dueTime || "",
       priority: data.priority,
       status: "todo",
+      url: (data.url || "").trim(),
       notes: data.notes.trim(),
       createdAt: Date.now(),
     });
@@ -523,6 +548,7 @@
     document.getElementById("eTime").value = item.dueTime || "";
     document.getElementById("ePriority").value = item.priority;
     document.getElementById("eStatus").value = item.status;
+    document.getElementById("eUrl").value = item.url || "";
     document.getElementById("eNotes").value = item.notes || "";
     el.editBackdrop.hidden = false;
     document.getElementById("eTitle").focus();
@@ -549,6 +575,7 @@
       dueTime: document.getElementById("eTime").value,
       priority: document.getElementById("ePriority").value,
       status: document.getElementById("eStatus").value,
+      url: document.getElementById("eUrl").value.trim(),
       notes: document.getElementById("eNotes").value.trim(),
     });
     closeEdit();
@@ -563,12 +590,14 @@
     const dueDate = document.getElementById("fDate").value;
     const dueTime = document.getElementById("fTime").value;
     const priority = document.getElementById("fPriority").value;
+    const url = document.getElementById("fUrl").value;
     const notes = document.getElementById("fNotes").value;
 
     if (!title.trim() || !subject.trim() || !dueDate) return;
 
-    addItem({ title, subject, type, dueDate, dueTime, priority, notes });
+    addItem({ title, subject, type, dueDate, dueTime, priority, url, notes });
     el.addForm.reset();
+    document.getElementById("fUrl").value = "";
     document.getElementById("fType").value = type; // keep last used type for convenience
     document.getElementById("fPriority").value = "medium";
     document.getElementById("fNotes").value = "";
