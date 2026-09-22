@@ -1,0 +1,16 @@
+{
+  "name": "Jarvis — Assignment & Test Hub",
+  "short_name": "Jarvis",
+  "description": "Track assignments, tests, notes, study guides, flashcards and practice problems in one place.",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#f4f5fa",
+  "theme_color": "#5b5ff0",
+  "orientation": "any",
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-512-maskable.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

@@ -2,8 +2,16 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
 <title>Jarvis — Assignment & Test Hub</title>
+<link rel="manifest" href="manifest.json" />
+<meta name="theme-color" content="#5b5ff0" />
+<meta name="mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<meta name="apple-mobile-web-app-title" content="Jarvis" />
+<link rel="apple-touch-icon" href="icons/icon-180.png" />
+<link rel="icon" href="icons/icon-192.png" />
 <link rel="stylesheet" href="css/styles.css" />
 </head>
 <body>
@@ -20,7 +28,16 @@
       <button id="themeToggle" class="icon-btn" title="Toggle theme" aria-label="Toggle theme">🌙</button>
     </div>
 
-    <div class="stats-grid">
+    <nav class="section-nav" id="sectionNav">
+      <button class="section-item active" data-section="assignments">📋 Assignments</button>
+      <button class="section-item" data-section="notes">📝 Notes</button>
+      <button class="section-item" data-section="guides">📖 Study Guides</button>
+      <button class="section-item" data-section="flashcards">🗂️ Flashcards</button>
+      <button class="section-item" data-section="practice">✏️ Practice</button>
+      <button class="section-item" data-section="ask">✨ Ask Jarvis</button>
+    </nav>
+
+    <div class="stats-grid" data-assign-only>
       <div class="stat-card stat-overdue">
         <div class="stat-value" id="statOverdue">0</div>
         <div class="stat-label">Overdue</div>
@@ -39,7 +56,7 @@
       </div>
     </div>
 
-    <div class="progress-block">
+    <div class="progress-block" data-assign-only>
       <div class="progress-label">
         <span>Overall progress</span>
         <span id="progressPct">0%</span>
@@ -49,7 +66,7 @@
       </div>
     </div>
 
-    <nav class="filter-nav" id="viewNav">
+    <nav class="filter-nav" id="viewNav" data-assign-only>
       <button class="nav-item active" data-view="all">📋 All</button>
       <button class="nav-item" data-view="upcoming">📅 Upcoming</button>
       <button class="nav-item" data-view="overdue">⏰ Overdue</button>
@@ -63,7 +80,7 @@
       </select>
     </div>
 
-    <div class="filter-section">
+    <div class="filter-section" data-assign-only>
       <div class="filter-title">Type</div>
       <select id="typeFilter" class="select">
         <option value="">All types</option>
@@ -76,7 +93,7 @@
       </select>
     </div>
 
-    <div class="filter-section">
+    <div class="filter-section" data-assign-only>
       <div class="filter-title">Priority</div>
       <select id="priorityFilter" class="select">
         <option value="">All priorities</option>
@@ -90,61 +107,168 @@
       <button id="exportBtn" class="ghost-btn">⬇ Export</button>
       <label class="ghost-btn" for="importInput" title="Import a backup .json, or a Canvas/Blackboard calendar feed .ics file">⬆ Import (.json / .ics)</label>
       <input type="file" id="importInput" accept="application/json,.ics,text/calendar" hidden />
-      <button id="clearCompletedBtn" class="ghost-btn danger">🗑 Clear done</button>
+      <button id="clearCompletedBtn" class="ghost-btn danger" data-assign-only>🗑 Clear done</button>
     </div>
   </aside>
 
   <!-- Main -->
   <main class="main">
-    <header class="topbar">
-      <div class="search-wrap">
-        <input id="searchInput" type="text" placeholder="Search assignments & tests…  (press / to focus)" />
-      </div>
-      <div class="sort-wrap">
-        <label for="sortSelect">Sort</label>
-        <select id="sortSelect" class="select">
-          <option value="due">Due date</option>
-          <option value="priority">Priority</option>
-          <option value="subject">Subject</option>
-          <option value="created">Recently added</option>
-        </select>
-      </div>
-    </header>
 
-    <section class="quick-add" id="quickAdd">
-      <form id="addForm">
-        <input id="fTitle" type="text" placeholder="Title (e.g. Chapter 4 Quiz) — press N to focus" required />
-        <input id="fSubject" type="text" list="subjectList" placeholder="Subject" required />
-        <datalist id="subjectList"></datalist>
-        <select id="fType" class="select">
-          <option value="assignment">Assignment</option>
-          <option value="homework">Homework</option>
-          <option value="quiz">Quiz</option>
-          <option value="test">Test</option>
-          <option value="project">Project</option>
-          <option value="exam">Exam</option>
-        </select>
-        <input id="fDate" type="date" required />
-        <input id="fTime" type="time" />
-        <select id="fPriority" class="select">
-          <option value="medium">Medium priority</option>
-          <option value="high">High priority</option>
-          <option value="low">Low priority</option>
-        </select>
-        <button type="submit" class="primary-btn">+ Add</button>
-      </form>
-      <textarea id="fNotes" placeholder="Notes (optional) — details, chapters, links…"></textarea>
+    <!-- ========== Assignments section ========== -->
+    <section class="view-section" id="section-assignments">
+      <header class="topbar">
+        <div class="search-wrap">
+          <input id="searchInput" type="text" placeholder="Search assignments & tests…  (press / to focus)" />
+        </div>
+        <div class="sort-wrap">
+          <label for="sortSelect">Sort</label>
+          <select id="sortSelect" class="select">
+            <option value="due">Due date</option>
+            <option value="priority">Priority</option>
+            <option value="subject">Subject</option>
+            <option value="created">Recently added</option>
+          </select>
+        </div>
+      </header>
+
+      <section class="quick-add" id="quickAdd">
+        <form id="addForm">
+          <input id="fTitle" type="text" placeholder="Title (e.g. Chapter 4 Quiz) — press N to focus" required />
+          <input id="fSubject" type="text" list="subjectList" placeholder="Subject" required />
+          <datalist id="subjectList"></datalist>
+          <select id="fType" class="select">
+            <option value="assignment">Assignment</option>
+            <option value="homework">Homework</option>
+            <option value="quiz">Quiz</option>
+            <option value="test">Test</option>
+            <option value="project">Project</option>
+            <option value="exam">Exam</option>
+          </select>
+          <input id="fDate" type="date" required />
+          <input id="fTime" type="time" />
+          <select id="fPriority" class="select">
+            <option value="medium">Medium priority</option>
+            <option value="high">High priority</option>
+            <option value="low">Low priority</option>
+          </select>
+          <button type="submit" class="primary-btn">+ Add</button>
+        </form>
+        <textarea id="fNotes" placeholder="Notes (optional) — details, chapters, links…"></textarea>
+      </section>
+
+      <section class="list-area" id="listArea">
+        <!-- groups injected here -->
+      </section>
+
+      <div class="empty-state" id="emptyState" hidden>
+        <div class="empty-emoji">🎉</div>
+        <div class="empty-title">Nothing here</div>
+        <div class="empty-sub">You're all caught up, or nothing matches your filters.</div>
+      </div>
     </section>
 
-    <section class="list-area" id="listArea">
-      <!-- groups injected here -->
+    <!-- ========== Notes section ========== -->
+    <section class="view-section" id="section-notes" hidden>
+      <header class="topbar"><h2 class="section-heading">📝 Notes</h2></header>
+      <section class="quick-add">
+        <form id="noteForm" class="stack-form">
+          <div class="row2">
+            <input id="nTitle" type="text" placeholder="Note title" required />
+            <input id="nSubject" type="text" list="subjectList" placeholder="Subject" required />
+          </div>
+          <textarea id="nBody" placeholder="Write your note…" rows="4"></textarea>
+          <button type="submit" class="primary-btn">+ Add Note</button>
+        </form>
+      </section>
+      <section class="list-area" id="notesList"></section>
+      <div class="empty-state" id="notesEmpty" hidden>
+        <div class="empty-emoji">📝</div>
+        <div class="empty-title">No notes yet</div>
+        <div class="empty-sub">Jot down anything worth remembering from class.</div>
+      </div>
     </section>
 
-    <div class="empty-state" id="emptyState" hidden>
-      <div class="empty-emoji">🎉</div>
-      <div class="empty-title">Nothing here</div>
-      <div class="empty-sub">You're all caught up, or nothing matches your filters.</div>
-    </div>
+    <!-- ========== Study Guides section ========== -->
+    <section class="view-section" id="section-guides" hidden>
+      <header class="topbar"><h2 class="section-heading">📖 Study Guides</h2></header>
+      <section class="quick-add">
+        <form id="guideForm" class="stack-form">
+          <div class="row2">
+            <input id="gTitle" type="text" placeholder="Guide title (e.g. Unit 3 Review)" required />
+            <input id="gSubject" type="text" list="subjectList" placeholder="Subject" required />
+          </div>
+          <textarea id="gBody" placeholder="# Heading&#10;- bullet point&#10;**bold** text…  (markdown-lite: # headings, - bullets, **bold**)" rows="6"></textarea>
+          <button type="submit" class="primary-btn">+ Add Guide</button>
+        </form>
+      </section>
+      <section class="list-area" id="guidesList"></section>
+      <div class="empty-state" id="guidesEmpty" hidden>
+        <div class="empty-emoji">📖</div>
+        <div class="empty-title">No study guides yet</div>
+        <div class="empty-sub">Build a review sheet per unit or exam.</div>
+      </div>
+    </section>
+
+    <!-- ========== Flashcards section ========== -->
+    <section class="view-section" id="section-flashcards" hidden>
+      <header class="topbar"><h2 class="section-heading">🗂️ Flashcards</h2></header>
+      <section class="quick-add">
+        <form id="cardForm" class="stack-form">
+          <div class="row2">
+            <input id="cSubject" type="text" list="subjectList" placeholder="Subject (deck)" required />
+          </div>
+          <div class="row2">
+            <textarea id="cFront" placeholder="Front (question/term)" rows="2" required></textarea>
+            <textarea id="cBack" placeholder="Back (answer/definition)" rows="2" required></textarea>
+          </div>
+          <button type="submit" class="primary-btn">+ Add Card</button>
+        </form>
+      </section>
+      <section class="list-area" id="decksList"></section>
+      <div class="empty-state" id="decksEmpty" hidden>
+        <div class="empty-emoji">🗂️</div>
+        <div class="empty-title">No flashcards yet</div>
+        <div class="empty-sub">Add cards above — they group into decks by subject.</div>
+      </div>
+    </section>
+
+    <!-- ========== Practice Problems section ========== -->
+    <section class="view-section" id="section-practice" hidden>
+      <header class="topbar"><h2 class="section-heading">✏️ Practice Problems</h2></header>
+      <section class="quick-add">
+        <form id="problemForm" class="stack-form">
+          <div class="row2">
+            <input id="pSubject" type="text" list="subjectList" placeholder="Subject" required />
+          </div>
+          <textarea id="pQuestion" placeholder="Question / problem" rows="2" required></textarea>
+          <textarea id="pAnswer" placeholder="Answer / solution" rows="2" required></textarea>
+          <button type="submit" class="primary-btn">+ Add Problem</button>
+        </form>
+      </section>
+      <section class="list-area" id="problemsList"></section>
+      <div class="empty-state" id="problemsEmpty" hidden>
+        <div class="empty-emoji">✏️</div>
+        <div class="empty-title">No practice problems yet</div>
+        <div class="empty-sub">Add a few to quiz yourself before the test.</div>
+      </div>
+    </section>
+
+    <!-- ========== Ask Jarvis section ========== -->
+    <section class="view-section" id="section-ask" hidden>
+      <header class="topbar"><h2 class="section-heading">✨ Ask Jarvis</h2></header>
+      <section class="chat-panel">
+        <div class="chat-messages" id="chatMessages"></div>
+        <div class="chat-unavailable" id="chatUnavailable" hidden>
+          <p>The AI agent runs on Claude's own infrastructure and only works inside the Claude-hosted version of this hub — not this installed/offline copy.</p>
+          <p><a id="chatArtifactLink" href="#" target="_blank" rel="noopener">Open the AI-enabled version →</a></p>
+        </div>
+        <form id="chatForm" class="chat-input-row" hidden>
+          <input id="chatInput" type="text" placeholder="Ask about your assignments, notes, or anything you're studying…" autocomplete="off" />
+          <button type="submit" class="primary-btn">Send</button>
+        </form>
+      </section>
+    </section>
+
   </main>
 </div>
 
@@ -204,6 +328,46 @@
         <button type="submit" class="primary-btn">Save</button>
       </div>
     </form>
+  </div>
+</div>
+
+<!-- Shared edit modal for notes / study guides / practice problems -->
+<div class="modal-backdrop" id="studyEditBackdrop" hidden>
+  <div class="modal">
+    <h3 id="seHeading">Edit</h3>
+    <form id="studyEditForm">
+      <input id="seTitle" type="text" placeholder="Title" required />
+      <input id="seSubject" type="text" list="subjectList" placeholder="Subject" required />
+      <textarea id="seBody" rows="6" placeholder="Body"></textarea>
+      <div class="modal-actions">
+        <button type="button" id="seCancel" class="ghost-btn">Cancel</button>
+        <button type="submit" class="primary-btn">Save</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Flashcard study modal -->
+<div class="modal-backdrop study-modal" id="studyModeBackdrop" hidden>
+  <div class="modal">
+    <h3 id="studyModeHeading">Deck</h3>
+    <div class="flip-card" id="flipCard">
+      <div class="flip-card-inner">
+        <div class="flip-face front" id="flipFront"></div>
+        <div class="flip-face back" id="flipBack"></div>
+      </div>
+    </div>
+    <div class="study-controls">
+      <span class="study-progress" id="studyProgress">1 / 1</span>
+      <div class="study-nav-btns">
+        <button type="button" id="studyPrev" class="ghost-btn">← Prev</button>
+        <button type="button" id="studyShuffle" class="ghost-btn">🔀 Shuffle</button>
+        <button type="button" id="studyNext" class="ghost-btn">Next →</button>
+      </div>
+    </div>
+    <div class="modal-actions">
+      <button type="button" id="studyModeClose" class="primary-btn">Done</button>
+    </div>
   </div>
 </div>
 

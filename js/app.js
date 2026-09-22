@@ -2,13 +2,18 @@
   "use strict";
 
   const STORAGE_KEY = "jarvis.hub.items.v1";
+  const STUDY_KEY = "jarvis.hub.study.v1";
   const THEME_KEY = "jarvis.hub.theme";
+  const ARTIFACT_URL = "https://claude.ai/artifact/BhQXyuT9jqsBZtsvXTU6KX";
 
   /** @typedef {{id:string,title:string,subject:string,type:string,dueDate:string,dueTime:string,priority:string,status:string,notes:string,createdAt:number}} Item */
 
   /** @type {Item[]} */
   let items = load();
+  /** @type {{notes:Array,guides:Array,cards:Array,problems:Array}} */
+  let study = loadStudy();
   let state = {
+    section: "assignments", // assignments | notes | guides | flashcards | practice | ask
     view: "all", // all | upcoming | overdue | completed
     subject: "",
     type: "",
@@ -30,6 +35,26 @@
 
   function save() {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(items));
+  }
+
+  function loadStudy() {
+    try {
+      const raw = localStorage.getItem(STUDY_KEY);
+      const parsed = raw ? JSON.parse(raw) : null;
+      return {
+        notes: Array.isArray(parsed?.notes) ? parsed.notes : [],
+        guides: Array.isArray(parsed?.guides) ? parsed.guides : [],
+        cards: Array.isArray(parsed?.cards) ? parsed.cards : [],
+        problems: Array.isArray(parsed?.problems) ? parsed.problems : [],
+      };
+    } catch (e) {
+      console.error("Failed to load study data", e);
+      return { notes: [], guides: [], cards: [], problems: [] };
+    }
+  }
+
+  function saveStudy() {
+    localStorage.setItem(STUDY_KEY, JSON.stringify(study));
   }
 
   function uid() {
@@ -180,6 +205,7 @@
     sortSelect: document.getElementById("sortSelect"),
     searchInput: document.getElementById("searchInput"),
     viewNav: document.getElementById("viewNav"),
+    sectionNav: document.getElementById("sectionNav"),
     addForm: document.getElementById("addForm"),
     subjectList: document.getElementById("subjectList"),
     itemTemplate: document.getElementById("itemTemplate"),
@@ -208,9 +234,55 @@
     el.themeToggle.textContent = next === "dark" ? "☀️" : "🌙";
   });
 
+  // ---------- section switching ----------
+  el.sectionNav.addEventListener("click", (e) => {
+    const btn = e.target.closest(".section-item");
+    if (!btn) return;
+    switchSection(btn.dataset.section);
+  });
+
+  function switchSection(section) {
+    state.section = section;
+    [...el.sectionNav.children].forEach((c) => c.classList.toggle("active", c.dataset.section === section));
+    document.querySelectorAll(".view-section").forEach((s) => {
+      s.hidden = s.id !== `section-${section}`;
+    });
+    const assignOnly = section === "assignments";
+    document.querySelectorAll("[data-assign-only]").forEach((n) => {
+      n.style.display = assignOnly ? "" : "none";
+    });
+    if (section === "notes") renderNotes();
+    else if (section === "guides") renderGuides();
+    else if (section === "flashcards") renderDecks();
+    else if (section === "practice") renderProblems();
+    else if (section === "ask") initChatSection();
+  }
+
   // ---------- rendering ----------
   function uniqueSubjects() {
-    return [...new Set(items.map((i) => i.subject).filter(Boolean))].sort((a, b) => a.localeCompare(b));
+    const all = [
+      ...items.map((i) => i.subject),
+      ...study.notes.map((n) => n.subject),
+      ...study.guides.map((g) => g.subject),
+      ...study.cards.map((c) => c.subject),
+      ...study.problems.map((p) => p.subject),
+    ];
+    return [...new Set(all.filter(Boolean))].sort((a, b) => a.localeCompare(b));
+  }
+
+  function renderMarkdownLite(text) {
+    const escaped = escapeHtml(text);
+    const lines = escaped.split("\n").map((line) => {
+      if (/^###\s+/.test(line)) return `<h3>${line.replace(/^###\s+/, "")}</h3>`;
+      if (/^##\s+/.test(line)) return `<h3>${line.replace(/^##\s+/, "")}</h3>`;
+      if (/^#\s+/.test(line)) return `<h3>${line.replace(/^#\s+/, "")}</h3>`;
+      if (/^-\s+/.test(line)) return `<li>${line.replace(/^-\s+/, "")}</li>`;
+      return line ? `<p>${line}</p>` : "";
+    });
+    return lines
+      .join("\n")
+      .replace(/(<li>.*<\/li>\n?)+/g, (m) => `<ul>${m}</ul>`)
+      .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>");
   }
 
   function refreshSubjectOptions() {
@@ -541,7 +613,7 @@
   // ---------- export / import ----------
   el.exportBtn.addEventListener("click", async () => {
     const filename = `jarvis-hub-backup-${new Date().toISOString().slice(0, 10)}.json`;
-    const data = JSON.stringify(items, null, 2);
+    const data = JSON.stringify({ items, study }, null, 2);
 
     // When running inside a claude.ai Artifact, plain <a download> links are
     // sandboxed and silently do nothing — use the platform's save capability instead.
@@ -573,32 +645,75 @@
       const text = await file.text();
       const isICS = /\.ics$/i.test(file.name) || text.trim().startsWith("BEGIN:VCALENDAR");
 
-      let parsed;
+      let parsedItems = null;
+      let parsedStudy = null;
+
       if (isICS) {
-        parsed = parseICS(text);
-        if (!parsed.length) throw new Error("No events found in that calendar file.");
+        parsedItems = parseICS(text);
+        if (!parsedItems.length) throw new Error("No events found in that calendar file.");
       } else {
-        parsed = JSON.parse(text);
-        if (!Array.isArray(parsed)) throw new Error("Invalid file format.");
-      }
-
-      const label = isICS ? "calendar events" : "items";
-      if (!confirm(`Import ${parsed.length} ${label}? New ones are added; ones you've already imported before are refreshed in place.`)) return;
-
-      const byId = new Map(items.map((i) => [i.id, i]));
-      for (const raw of parsed) {
-        if (!raw || !raw.title) continue;
-        const id = raw.id || uid();
-        if (byId.has(id)) {
-          Object.assign(byId.get(id), raw, { id, status: byId.get(id).status });
+        const parsed = JSON.parse(text);
+        if (Array.isArray(parsed)) {
+          parsedItems = parsed;
+        } else if (parsed && typeof parsed === "object") {
+          parsedItems = Array.isArray(parsed.items) ? parsed.items : [];
+          parsedStudy = parsed.study && typeof parsed.study === "object" ? parsed.study : null;
         } else {
-          const newItem = { ...raw, id };
-          items.push(newItem);
-          byId.set(id, newItem);
+          throw new Error("Invalid file format.");
         }
       }
-      save();
+
+      const itemCount = parsedItems ? parsedItems.length : 0;
+      const studyCount = parsedStudy
+        ? ["notes", "guides", "cards", "problems"].reduce((n, k) => n + (Array.isArray(parsedStudy[k]) ? parsedStudy[k].length : 0), 0)
+        : 0;
+      if (!itemCount && !studyCount) throw new Error("Nothing to import in that file.");
+
+      const label = isICS ? "calendar events" : "items";
+      const studyNote = studyCount ? ` plus ${studyCount} study item(s)` : "";
+      if (!confirm(`Import ${itemCount} ${label}${studyNote}? New ones are added; ones you've already imported before are refreshed in place.`)) return;
+
+      if (parsedItems && parsedItems.length) {
+        const byId = new Map(items.map((i) => [i.id, i]));
+        for (const raw of parsedItems) {
+          if (!raw || !raw.title) continue;
+          const id = raw.id || uid();
+          if (byId.has(id)) {
+            Object.assign(byId.get(id), raw, { id, status: byId.get(id).status });
+          } else {
+            const newItem = { ...raw, id };
+            items.push(newItem);
+            byId.set(id, newItem);
+          }
+        }
+        save();
+      }
+
+      if (parsedStudy) {
+        for (const key of ["notes", "guides", "cards", "problems"]) {
+          const incoming = Array.isArray(parsedStudy[key]) ? parsedStudy[key] : [];
+          if (!incoming.length) continue;
+          const byId = new Map(study[key].map((x) => [x.id, x]));
+          for (const raw of incoming) {
+            if (!raw) continue;
+            const id = raw.id || uid();
+            if (byId.has(id)) {
+              Object.assign(byId.get(id), raw, { id });
+            } else {
+              const newItem = { ...raw, id };
+              study[key].push(newItem);
+              byId.set(id, newItem);
+            }
+          }
+        }
+        saveStudy();
+      }
+
       render();
+      if (state.section === "notes") renderNotes();
+      else if (state.section === "guides") renderGuides();
+      else if (state.section === "flashcards") renderDecks();
+      else if (state.section === "practice") renderProblems();
     } catch (err) {
       alert("Could not import file: " + err.message);
     } finally {
@@ -624,10 +739,10 @@
       return;
     }
     if (typing) return;
-    if (e.key === "/") {
+    if (e.key === "/" && state.section === "assignments") {
       e.preventDefault();
       el.searchInput.focus();
-    } else if (e.key.toLowerCase() === "n") {
+    } else if (e.key.toLowerCase() === "n" && state.section === "assignments") {
       e.preventDefault();
       document.getElementById("fTitle").focus();
     }
@@ -639,7 +754,497 @@
     document.getElementById("fDate").min = today;
   })();
 
+  // ==================================================================
+  // Notes
+  // ==================================================================
+  function addNote(subject, title, body) {
+    study.notes.unshift({ id: uid(), subject: subject.trim(), title: title.trim(), body: body.trim(), createdAt: Date.now() });
+    saveStudy();
+    renderNotes();
+  }
+
+  function deleteNote(id) {
+    const n = study.notes.find((x) => x.id === id);
+    if (!n) return;
+    if (!confirm(`Delete note "${n.title}"?`)) return;
+    study.notes = study.notes.filter((x) => x.id !== id);
+    saveStudy();
+    renderNotes();
+  }
+
+  function renderNotes() {
+    refreshSubjectOptions();
+    const list = document.getElementById("notesList");
+    const empty = document.getElementById("notesEmpty");
+    list.innerHTML = "";
+    if (!study.notes.length) {
+      empty.hidden = false;
+      return;
+    }
+    empty.hidden = true;
+    for (const n of study.notes) {
+      const card = document.createElement("div");
+      card.className = "study-card";
+      card.innerHTML = `
+        <div class="study-card-top">
+          <span class="study-card-title">${escapeHtml(n.title)}</span>
+          <span class="study-card-subject">${escapeHtml(n.subject)}</span>
+          <span class="study-card-actions"></span>
+        </div>
+        <div class="study-card-body">${escapeHtml(n.body)}</div>
+      `;
+      const actions = card.querySelector(".study-card-actions");
+      actions.innerHTML = `<button class="icon-btn edit-btn" title="Edit">✏️</button><button class="icon-btn delete-btn" title="Delete">🗑️</button>`;
+      actions.children[0].addEventListener("click", () => openStudyEdit("notes", n.id));
+      actions.children[1].addEventListener("click", () => deleteNote(n.id));
+      list.appendChild(card);
+    }
+  }
+
+  document.getElementById("noteForm").addEventListener("submit", (e) => {
+    e.preventDefault();
+    const title = document.getElementById("nTitle").value;
+    const subject = document.getElementById("nSubject").value;
+    const body = document.getElementById("nBody").value;
+    if (!title.trim() || !subject.trim()) return;
+    addNote(subject, title, body);
+    e.target.reset();
+    document.getElementById("nTitle").focus();
+  });
+
+  // ==================================================================
+  // Study Guides
+  // ==================================================================
+  function addGuide(subject, title, body) {
+    study.guides.unshift({ id: uid(), subject: subject.trim(), title: title.trim(), body: body.trim(), createdAt: Date.now() });
+    saveStudy();
+    renderGuides();
+  }
+
+  function deleteGuide(id) {
+    const g = study.guides.find((x) => x.id === id);
+    if (!g) return;
+    if (!confirm(`Delete study guide "${g.title}"?`)) return;
+    study.guides = study.guides.filter((x) => x.id !== id);
+    saveStudy();
+    renderGuides();
+  }
+
+  function renderGuides() {
+    refreshSubjectOptions();
+    const list = document.getElementById("guidesList");
+    const empty = document.getElementById("guidesEmpty");
+    list.innerHTML = "";
+    if (!study.guides.length) {
+      empty.hidden = false;
+      return;
+    }
+    empty.hidden = true;
+    for (const g of study.guides) {
+      const card = document.createElement("div");
+      card.className = "study-card";
+      card.innerHTML = `
+        <div class="study-card-top">
+          <span class="study-card-title">${escapeHtml(g.title)}</span>
+          <span class="study-card-subject">${escapeHtml(g.subject)}</span>
+          <span class="study-card-actions"></span>
+        </div>
+        <div class="study-card-body">${renderMarkdownLite(g.body)}</div>
+      `;
+      const actions = card.querySelector(".study-card-actions");
+      actions.innerHTML = `<button class="icon-btn edit-btn" title="Edit">✏️</button><button class="icon-btn delete-btn" title="Delete">🗑️</button>`;
+      actions.children[0].addEventListener("click", () => openStudyEdit("guides", g.id));
+      actions.children[1].addEventListener("click", () => deleteGuide(g.id));
+      list.appendChild(card);
+    }
+  }
+
+  document.getElementById("guideForm").addEventListener("submit", (e) => {
+    e.preventDefault();
+    const title = document.getElementById("gTitle").value;
+    const subject = document.getElementById("gSubject").value;
+    const body = document.getElementById("gBody").value;
+    if (!title.trim() || !subject.trim()) return;
+    addGuide(subject, title, body);
+    e.target.reset();
+    document.getElementById("gTitle").focus();
+  });
+
+  // ==================================================================
+  // Shared edit modal (notes / guides / practice problems)
+  // ==================================================================
+  let studyEditingType = null;
+  let studyEditingId = null;
+
+  function openStudyEdit(type, id) {
+    const item = study[type].find((x) => x.id === id);
+    if (!item) return;
+    studyEditingType = type;
+    studyEditingId = id;
+    const heading = document.getElementById("seHeading");
+    const titleField = document.getElementById("seTitle");
+    const subjectField = document.getElementById("seSubject");
+    const bodyField = document.getElementById("seBody");
+    subjectField.value = item.subject;
+    if (type === "problems") {
+      heading.textContent = "Edit practice problem";
+      titleField.placeholder = "Question";
+      bodyField.placeholder = "Answer";
+      titleField.value = item.question;
+      bodyField.value = item.answer;
+    } else {
+      heading.textContent = type === "notes" ? "Edit note" : "Edit study guide";
+      titleField.placeholder = "Title";
+      bodyField.placeholder = "Body";
+      titleField.value = item.title;
+      bodyField.value = item.body;
+    }
+    document.getElementById("studyEditBackdrop").hidden = false;
+    titleField.focus();
+  }
+
+  function closeStudyEdit() {
+    document.getElementById("studyEditBackdrop").hidden = true;
+    studyEditingType = null;
+    studyEditingId = null;
+  }
+
+  document.getElementById("seCancel").addEventListener("click", closeStudyEdit);
+  document.getElementById("studyEditBackdrop").addEventListener("click", (e) => {
+    if (e.target.id === "studyEditBackdrop") closeStudyEdit();
+  });
+
+  document.getElementById("studyEditForm").addEventListener("submit", (e) => {
+    e.preventDefault();
+    if (!studyEditingType || !studyEditingId) return;
+    const item = study[studyEditingType].find((x) => x.id === studyEditingId);
+    if (!item) return;
+    const subject = document.getElementById("seSubject").value.trim();
+    const titleVal = document.getElementById("seTitle").value.trim();
+    const bodyVal = document.getElementById("seBody").value.trim();
+    item.subject = subject;
+    if (studyEditingType === "problems") {
+      item.question = titleVal;
+      item.answer = bodyVal;
+    } else {
+      item.title = titleVal;
+      item.body = bodyVal;
+    }
+    saveStudy();
+    if (studyEditingType === "notes") renderNotes();
+    else if (studyEditingType === "guides") renderGuides();
+    else if (studyEditingType === "problems") renderProblems();
+    closeStudyEdit();
+  });
+
+  // ==================================================================
+  // Flashcards
+  // ==================================================================
+  function addCard(subject, front, back) {
+    study.cards.push({ id: uid(), subject: subject.trim(), front: front.trim(), back: back.trim(), createdAt: Date.now() });
+    saveStudy();
+    renderDecks();
+  }
+
+  function deleteCard(id) {
+    study.cards = study.cards.filter((c) => c.id !== id);
+    saveStudy();
+    renderDecks();
+  }
+
+  function renderDecks() {
+    refreshSubjectOptions();
+    const list = document.getElementById("decksList");
+    const empty = document.getElementById("decksEmpty");
+    list.innerHTML = "";
+    if (!study.cards.length) {
+      empty.hidden = false;
+      return;
+    }
+    empty.hidden = true;
+
+    const bySubject = new Map();
+    for (const c of study.cards) {
+      if (!bySubject.has(c.subject)) bySubject.set(c.subject, []);
+      bySubject.get(c.subject).push(c);
+    }
+
+    for (const [subject, cards] of bySubject) {
+      const deck = document.createElement("div");
+      deck.className = "deck-card";
+      deck.innerHTML = `
+        <div class="deck-top">
+          <span class="deck-name">${escapeHtml(subject)}</span>
+          <span class="deck-count">${cards.length} card${cards.length === 1 ? "" : "s"}</span>
+          <button type="button" class="primary-btn study-deck-btn">▶ Study</button>
+        </div>
+        <div class="deck-card-list"></div>
+      `;
+      deck.querySelector(".study-deck-btn").addEventListener("click", () => openStudyMode(subject, cards));
+      const rowsEl = deck.querySelector(".deck-card-list");
+      for (const c of cards) {
+        const row = document.createElement("div");
+        row.className = "deck-card-row";
+        row.innerHTML = `<span class="front"></span><span class="back"></span>`;
+        row.querySelector(".front").textContent = c.front;
+        row.querySelector(".back").textContent = c.back;
+        const del = document.createElement("button");
+        del.className = "icon-btn";
+        del.title = "Delete card";
+        del.textContent = "🗑️";
+        del.addEventListener("click", () => deleteCard(c.id));
+        row.appendChild(del);
+        rowsEl.appendChild(row);
+      }
+      list.appendChild(deck);
+    }
+  }
+
+  document.getElementById("cardForm").addEventListener("submit", (e) => {
+    e.preventDefault();
+    const subject = document.getElementById("cSubject").value;
+    const front = document.getElementById("cFront").value;
+    const back = document.getElementById("cBack").value;
+    if (!subject.trim() || !front.trim() || !back.trim()) return;
+    addCard(subject, front, back);
+    document.getElementById("cFront").value = "";
+    document.getElementById("cBack").value = "";
+    document.getElementById("cFront").focus();
+  });
+
+  // ---- flashcard study mode ----
+  let studyDeck = [];
+  let studyIndex = 0;
+
+  function openStudyMode(subject, cards) {
+    studyDeck = cards.slice();
+    studyIndex = 0;
+    document.getElementById("studyModeHeading").textContent = subject;
+    document.getElementById("studyModeBackdrop").hidden = false;
+    renderStudyCard();
+  }
+
+  function renderStudyCard() {
+    document.getElementById("flipCard").classList.remove("flipped");
+    const card = studyDeck[studyIndex];
+    document.getElementById("flipFront").textContent = card.front;
+    document.getElementById("flipBack").textContent = card.back;
+    document.getElementById("studyProgress").textContent = `${studyIndex + 1} / ${studyDeck.length}`;
+  }
+
+  document.getElementById("flipCard").addEventListener("click", () => {
+    document.getElementById("flipCard").classList.toggle("flipped");
+  });
+  document.getElementById("studyPrev").addEventListener("click", () => {
+    studyIndex = (studyIndex - 1 + studyDeck.length) % studyDeck.length;
+    renderStudyCard();
+  });
+  document.getElementById("studyNext").addEventListener("click", () => {
+    studyIndex = (studyIndex + 1) % studyDeck.length;
+    renderStudyCard();
+  });
+  document.getElementById("studyShuffle").addEventListener("click", () => {
+    for (let i = studyDeck.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [studyDeck[i], studyDeck[j]] = [studyDeck[j], studyDeck[i]];
+    }
+    studyIndex = 0;
+    renderStudyCard();
+  });
+  document.getElementById("studyModeClose").addEventListener("click", () => {
+    document.getElementById("studyModeBackdrop").hidden = true;
+  });
+
+  // ==================================================================
+  // Practice Problems
+  // ==================================================================
+  function addProblem(subject, question, answer) {
+    study.problems.unshift({ id: uid(), subject: subject.trim(), question: question.trim(), answer: answer.trim(), createdAt: Date.now() });
+    saveStudy();
+    renderProblems();
+  }
+
+  function deleteProblem(id) {
+    const p = study.problems.find((x) => x.id === id);
+    if (!p) return;
+    if (!confirm("Delete this practice problem?")) return;
+    study.problems = study.problems.filter((x) => x.id !== id);
+    saveStudy();
+    renderProblems();
+  }
+
+  function renderProblems() {
+    refreshSubjectOptions();
+    const list = document.getElementById("problemsList");
+    const empty = document.getElementById("problemsEmpty");
+    list.innerHTML = "";
+    if (!study.problems.length) {
+      empty.hidden = false;
+      return;
+    }
+    empty.hidden = true;
+    for (const p of study.problems) {
+      const card = document.createElement("div");
+      card.className = "study-card";
+      card.innerHTML = `
+        <div class="study-card-top">
+          <span class="study-card-title">${escapeHtml(p.question)}</span>
+          <span class="study-card-subject">${escapeHtml(p.subject)}</span>
+          <span class="study-card-actions"></span>
+        </div>
+        <button type="button" class="reveal-btn">Show answer</button>
+        <div class="problem-answer">${escapeHtml(p.answer)}</div>
+      `;
+      const revealBtn = card.querySelector(".reveal-btn");
+      const answerEl = card.querySelector(".problem-answer");
+      revealBtn.addEventListener("click", () => {
+        const showing = answerEl.classList.toggle("shown");
+        revealBtn.textContent = showing ? "Hide answer" : "Show answer";
+      });
+      const actions = card.querySelector(".study-card-actions");
+      actions.innerHTML = `<button class="icon-btn edit-btn" title="Edit">✏️</button><button class="icon-btn delete-btn" title="Delete">🗑️</button>`;
+      actions.children[0].addEventListener("click", () => openStudyEdit("problems", p.id));
+      actions.children[1].addEventListener("click", () => deleteProblem(p.id));
+      list.appendChild(card);
+    }
+  }
+
+  document.getElementById("problemForm").addEventListener("submit", (e) => {
+    e.preventDefault();
+    const subject = document.getElementById("pSubject").value;
+    const question = document.getElementById("pQuestion").value;
+    const answer = document.getElementById("pAnswer").value;
+    if (!subject.trim() || !question.trim() || !answer.trim()) return;
+    addProblem(subject, question, answer);
+    document.getElementById("pQuestion").value = "";
+    document.getElementById("pAnswer").value = "";
+    document.getElementById("pQuestion").focus();
+  });
+
+  // ==================================================================
+  // Ask Jarvis (Claude artifact `sample` capability, with graceful fallback)
+  // ==================================================================
+  let sampleFn = null;
+  let sampleChecked = false;
+  let chatHistory = [];
+
+  async function ensureSample() {
+    if (sampleChecked) return sampleFn;
+    sampleChecked = true;
+    if (!(window.claude && typeof window.claude.use === "function")) return null;
+    try {
+      sampleFn = await window.claude.use("sample");
+    } catch (e) {
+      sampleFn = null;
+    }
+    return sampleFn;
+  }
+
+  function buildChatContext() {
+    const upcoming = items
+      .filter((i) => i.status !== "done")
+      .slice()
+      .sort(sortByDue)
+      .slice(0, 15)
+      .map((i) => `- ${i.title} (${i.subject}, ${i.type}, due ${i.dueDate || "no date"})`)
+      .join("\n");
+    const noteTitles = study.notes.slice(0, 20).map((n) => `- ${n.title} (${n.subject})`).join("\n");
+    const guideTitles = study.guides.slice(0, 20).map((g) => `- ${g.title} (${g.subject})`).join("\n");
+    const deckSubjects = [...new Set(study.cards.map((c) => c.subject))].join(", ");
+    return [
+      "You are Jarvis, a friendly study assistant embedded in this student's assignment tracker hub.",
+      "Answer questions about their coursework, help them study, quiz them using their flashcards or practice problems below, and help interpret their due dates. Be concise and encouraging.",
+      "",
+      "Their upcoming assignments/tests:",
+      upcoming || "(none tracked)",
+      "",
+      "Their notes:",
+      noteTitles || "(none yet)",
+      "",
+      "Their study guides:",
+      guideTitles || "(none yet)",
+      "",
+      `Flashcard decks: ${deckSubjects || "(none yet)"}`,
+      `Practice problems saved: ${study.problems.length}`,
+    ].join("\n");
+  }
+
+  function appendChatBubble(role, text, pending) {
+    const box = document.getElementById("chatMessages");
+    const empty = box.querySelector(".chat-empty");
+    if (empty) empty.remove();
+    const bubble = document.createElement("div");
+    bubble.className = `chat-msg ${role}${pending ? " pending" : ""}`;
+    bubble.textContent = text;
+    box.appendChild(bubble);
+    box.scrollTop = box.scrollHeight;
+    return bubble;
+  }
+
+  async function initChatSection() {
+    document.getElementById("chatArtifactLink").href = ARTIFACT_URL;
+    const fn = await ensureSample();
+    const unavailable = document.getElementById("chatUnavailable");
+    const form = document.getElementById("chatForm");
+    if (fn) {
+      unavailable.hidden = true;
+      form.hidden = false;
+      if (!chatHistory.length) {
+        document.getElementById("chatMessages").innerHTML =
+          `<div class="chat-empty">Ask about your assignments, due dates, notes, or anything you're studying.</div>`;
+      }
+    } else {
+      unavailable.hidden = false;
+      form.hidden = true;
+    }
+  }
+
+  document.getElementById("chatForm").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const input = document.getElementById("chatInput");
+    const text = input.value.trim();
+    if (!text) return;
+    input.value = "";
+    appendChatBubble("user", text);
+
+    const fn = await ensureSample();
+    if (!fn) {
+      appendChatBubble("assistant", "The AI agent isn't available in this copy of the hub.");
+      return;
+    }
+
+    const isFirstTurn = chatHistory.length === 0;
+    const content = isFirstTurn ? `${buildChatContext()}\n\n---\nStudent's question: ${text}` : text;
+    chatHistory.push({ role: "user", content });
+
+    const pendingBubble = appendChatBubble("assistant", "Thinking…", true);
+    try {
+      const result = await fn(chatHistory, {
+        onText: ({ text: partial }) => {
+          pendingBubble.textContent = partial;
+          pendingBubble.classList.remove("pending");
+        },
+        cache: false,
+        modelTier: "default",
+      });
+      pendingBubble.textContent = result.text;
+      pendingBubble.classList.remove("pending");
+      chatHistory.push({ role: "assistant", content: result.text });
+    } catch (err) {
+      pendingBubble.textContent = "Sorry, something went wrong: " + (err && err.message ? err.message : "unknown error");
+      pendingBubble.classList.remove("pending");
+    }
+  });
+
+  // ---------- installable app (service worker) ----------
+  function registerServiceWorker() {
+    if (!("serviceWorker" in navigator)) return;
+    if (window.claude) return; // inside a Claude Artifact sandbox — service workers aren't supported there
+    navigator.serviceWorker.register("sw.js").catch(() => {});
+  }
+
   // ---------- init ----------
   initTheme();
   render();
+  registerServiceWorker();
 })();
