@@ -787,9 +787,11 @@
   // Notes
   // ==================================================================
   function addNote(subject, title, body) {
-    study.notes.unshift({ id: uid(), subject: subject.trim(), title: title.trim(), body: body.trim(), createdAt: Date.now() });
+    const note = { id: uid(), subject: subject.trim(), title: title.trim(), body: body.trim(), attachments: [], createdAt: Date.now() };
+    study.notes.unshift(note);
     saveStudy();
     renderNotes();
+    return note;
   }
 
   function deleteNote(id) {
@@ -800,6 +802,64 @@
     saveStudy();
     renderNotes();
   }
+
+  // ---- file attachments (Claude artifact `assets` capability, Artifact-only) ----
+  let assetsFn = null;
+  let assetsChecked = false;
+
+  async function ensureAssets() {
+    if (assetsChecked) return assetsFn;
+    assetsChecked = true;
+    if (!(window.claude && typeof window.claude.use === "function")) return null;
+    try {
+      assetsFn = await window.claude.use("assets");
+    } catch (e) {
+      assetsFn = null;
+    }
+    return assetsFn;
+  }
+
+  function formatFileSize(bytes) {
+    if (!bytes && bytes !== 0) return "";
+    if (bytes < 1024) return bytes + " B";
+    if (bytes < 1024 * 1024) return Math.round(bytes / 1024) + " KB";
+    return (bytes / (1024 * 1024)).toFixed(1) + " MB";
+  }
+
+  async function uploadFilesToNote(note, fileList) {
+    const files = Array.from(fileList || []);
+    if (!files.length) return;
+    const assets = await ensureAssets();
+    if (!assets) {
+      alert(`File attachments aren't available in this copy of the hub — use the AI-enabled hosted version to attach files:\n${ARTIFACT_URL}`);
+      return;
+    }
+    for (const file of files) {
+      try {
+        const result = await assets.upload(file);
+        note.attachments.push({
+          id: result.id,
+          url: result.url,
+          filename: file.name,
+          contentType: result.contentType,
+          sizeBytes: result.sizeBytes,
+        });
+      } catch (err) {
+        alert(`Could not attach "${file.name}": ${err && err.message ? err.message : "unknown error"}`);
+      }
+    }
+    saveStudy();
+    renderNotes();
+  }
+
+  let pendingAttachNoteId = null;
+  const attachFileInput = document.getElementById("attachFileInput");
+  attachFileInput.addEventListener("change", async (e) => {
+    const note = study.notes.find((n) => n.id === pendingAttachNoteId);
+    if (note) await uploadFilesToNote(note, e.target.files);
+    e.target.value = "";
+    pendingAttachNoteId = null;
+  });
 
   function renderNotes() {
     refreshSubjectOptions();
@@ -821,25 +881,64 @@
           <span class="study-card-actions"></span>
         </div>
         <div class="study-card-body">${escapeHtml(n.body)}</div>
+        <div class="attachments"></div>
+        <button type="button" class="attach-btn">📎 Attach file</button>
       `;
       const actions = card.querySelector(".study-card-actions");
       actions.innerHTML = `<button class="icon-btn edit-btn" title="Edit">✏️</button><button class="icon-btn delete-btn" title="Delete">🗑️</button>`;
       actions.children[0].addEventListener("click", () => openStudyEdit("notes", n.id));
       actions.children[1].addEventListener("click", () => deleteNote(n.id));
+
+      const attachmentsEl = card.querySelector(".attachments");
+      for (const att of n.attachments || []) {
+        const chip = document.createElement("span");
+        chip.className = "attachment-chip";
+        chip.innerHTML = `<a href="${escapeAttr(att.url)}" target="_blank" rel="noopener noreferrer">📄 ${escapeHtml(att.filename)}</a><span>${formatFileSize(att.sizeBytes)}</span><button class="remove-attachment" title="Remove">✕</button>`;
+        chip.querySelector(".remove-attachment").addEventListener("click", async () => {
+          if (!confirm(`Remove attachment "${att.filename}"?`)) return;
+          const assets = await ensureAssets();
+          if (assets) {
+            try {
+              await assets.delete(att.id);
+            } catch (e) {
+              // continue removing the reference even if the remote delete fails
+            }
+          }
+          n.attachments = (n.attachments || []).filter((a) => a.id !== att.id);
+          saveStudy();
+          renderNotes();
+        });
+        attachmentsEl.appendChild(chip);
+      }
+
+      card.querySelector(".attach-btn").addEventListener("click", () => {
+        pendingAttachNoteId = n.id;
+        attachFileInput.click();
+      });
+
       list.appendChild(card);
     }
   }
 
-  document.getElementById("noteForm").addEventListener("submit", (e) => {
+  document.getElementById("noteForm").addEventListener("submit", async (e) => {
     e.preventDefault();
     const title = document.getElementById("nTitle").value;
     const subject = document.getElementById("nSubject").value;
     const body = document.getElementById("nBody").value;
+    const fileInput = document.getElementById("nFile");
     if (!title.trim() || !subject.trim()) return;
-    addNote(subject, title, body);
+    const note = addNote(subject, title, body);
+    if (fileInput.files.length) await uploadFilesToNote(note, fileInput.files);
     e.target.reset();
     document.getElementById("nTitle").focus();
   });
+
+  (function initFileHint() {
+    const hint = document.getElementById("nFileHint");
+    const link = document.getElementById("nFileHintLink");
+    link.href = ARTIFACT_URL;
+    if (!(window.claude && typeof window.claude.use === "function")) hint.hidden = false;
+  })();
 
   // ==================================================================
   // Study Guides
@@ -1202,12 +1301,29 @@
     const box = document.getElementById("chatMessages");
     const empty = box.querySelector(".chat-empty");
     if (empty) empty.remove();
+    const wrap = document.createElement("div");
+    wrap.className = `chat-msg-wrap wrap-${role}`;
     const bubble = document.createElement("div");
     bubble.className = `chat-msg ${role}${pending ? " pending" : ""}`;
     bubble.textContent = text;
-    box.appendChild(bubble);
+    wrap.appendChild(bubble);
+    box.appendChild(wrap);
     box.scrollTop = box.scrollHeight;
     return bubble;
+  }
+
+  function addSaveNoteButton(bubble) {
+    if (bubble.parentElement.querySelector(".save-note-btn")) return;
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "save-note-btn";
+    btn.textContent = "💾 Save as note";
+    btn.addEventListener("click", () => {
+      addNote("Ask Jarvis", `Chat note — ${new Date().toLocaleDateString()}`, bubble.textContent);
+      btn.textContent = "✓ Saved to Notes";
+      btn.disabled = true;
+    });
+    bubble.parentElement.appendChild(btn);
   }
 
   async function initChatSection() {
@@ -1258,6 +1374,7 @@
       });
       pendingBubble.textContent = result.text;
       pendingBubble.classList.remove("pending");
+      addSaveNoteButton(pendingBubble);
       chatHistory.push({ role: "assistant", content: result.text });
     } catch (err) {
       pendingBubble.textContent = "Sorry, something went wrong: " + (err && err.message ? err.message : "unknown error");

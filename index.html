@@ -178,6 +178,8 @@
             <input id="nSubject" type="text" list="subjectList" placeholder="Subject" required />
           </div>
           <textarea id="nBody" placeholder="Write your note…" rows="4"></textarea>
+          <input id="nFile" type="file" multiple />
+          <div class="hint-text" id="nFileHint" hidden>File attachments need the <a href="#" id="nFileHintLink" target="_blank" rel="noopener">AI-enabled hosted version</a> of the hub.</div>
           <button type="submit" class="primary-btn">+ Add Note</button>
         </form>
       </section>
@@ -188,6 +190,8 @@
         <div class="empty-sub">Jot down anything worth remembering from class.</div>
       </div>
     </section>
+
+    <input type="file" id="attachFileInput" hidden />
 
     <!-- ========== Study Guides section ========== -->
     <section class="view-section" id="section-guides" hidden>

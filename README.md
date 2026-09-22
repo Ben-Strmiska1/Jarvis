@@ -13,7 +13,8 @@ A single central hub to track every assignment, quiz, test, project, and exam ac
 - **Study Guides** — longer write-ups per unit/subject with lightweight markdown (`# heading`, `- bullets`, `**bold**`).
 - **Flashcards** — add cards per subject (they group into decks automatically), then use **Study** mode: click to flip, prev/next, shuffle.
 - **Practice Problems** — question + answer pairs with a "Show answer" reveal.
-- **Ask Jarvis** — an embedded AI chat assistant grounded in your real assignments/notes/flashcards. This only runs in the [Claude-hosted version](https://claude.ai/artifact/BhQXyuT9jqsBZtsvXTU6KX) of the hub (it uses Claude's own infrastructure, no API key needed there) — the installed/offline copy shows a link to open that version instead of a dead chat box.
+- **Ask Jarvis** — an embedded AI chat assistant grounded in your real assignments/notes/flashcards. Answers you're glad you kept can be saved straight to Notes with one click. This only runs in the [Claude-hosted version](https://claude.ai/artifact/BhQXyuT9jqsBZtsvXTU6KX) of the hub (it uses Claude's own infrastructure, no API key needed there) — the installed/offline copy shows a link to open that version instead of a dead chat box.
+- **File attachments on Notes** — attach PDFs, images, or any file to a note (also Claude-hosted-version only; the installed copy shows the same fallback link).
 - **Light/dark theme toggle**, remembered between visits.
 - **Backup/restore** — export everything (assignments + notes + guides + flashcards + practice problems) to one JSON file, import it back in (or on another device).
 - **Canvas / Blackboard calendar import** — import a `.ics` calendar feed file directly; due dates, course, and type (quiz/test/exam/project) are parsed automatically. Re-importing the same feed later updates existing items in place instead of duplicating them, and preserves any items you've already marked complete.
@@ -41,6 +42,15 @@ There's no live sync — school LMS platforms don't expose your assignments to t
 3. In the hub, click **Import (.json / .ics)** in the sidebar and pick the downloaded file.
 
 Re-download and re-import periodically (e.g. weekly) to pick up new/changed due dates — it will merge cleanly with what's already in your list.
+
+## Saving notes from a conversation with Claude
+
+Two ways to get something we discuss into your Notes:
+
+1. **Inside the hub itself**: use the **Ask Jarvis** tab (Claude-hosted version) and click **💾 Save as note** under any answer.
+2. **From a regular chat with Claude** (like this one): just ask — "save that as a note in Jarvis." Claude will hand you a small `.json` file in the same format as a calendar sync update; import it via the sidebar's **Import** button and it merges in like anything else, without disturbing your existing notes.
+
+There's no automatic live sync from an outside conversation into your browser's storage — Claude has no direct access to it — so step 2 is always an explicit "ask, then import," not something that happens silently in the background.
 
 ## Usage
 
