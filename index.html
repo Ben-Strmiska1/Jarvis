@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Jarvis — Assignment & Test Hub</title>
+<link rel="stylesheet" href="css/styles.css" />
+</head>
+<body>
+<div class="app">
+
+  <!-- Sidebar -->
+  <aside class="sidebar">
+    <div class="brand">
+      <div class="brand-mark">J</div>
+      <div class="brand-text">
+        <div class="brand-title">Jarvis</div>
+        <div class="brand-sub">Assignment & Test Hub</div>
+      </div>
+      <button id="themeToggle" class="icon-btn" title="Toggle theme" aria-label="Toggle theme">🌙</button>
+    </div>
+
+    <div class="stats-grid">
+      <div class="stat-card stat-overdue">
+        <div class="stat-value" id="statOverdue">0</div>
+        <div class="stat-label">Overdue</div>
+      </div>
+      <div class="stat-card stat-today">
+        <div class="stat-value" id="statToday">0</div>
+        <div class="stat-label">Due Today</div>
+      </div>
+      <div class="stat-card stat-week">
+        <div class="stat-value" id="statWeek">0</div>
+        <div class="stat-label">This Week</div>
+      </div>
+      <div class="stat-card stat-done">
+        <div class="stat-value" id="statDone">0</div>
+        <div class="stat-label">Completed</div>
+      </div>
+    </div>
+
+    <div class="progress-block">
+      <div class="progress-label">
+        <span>Overall progress</span>
+        <span id="progressPct">0%</span>
+      </div>
+      <div class="progress-track">
+        <div class="progress-fill" id="progressFill"></div>
+      </div>
+    </div>
+
+    <nav class="filter-nav" id="viewNav">
+      <button class="nav-item active" data-view="all">📋 All</button>
+      <button class="nav-item" data-view="upcoming">📅 Upcoming</button>
+      <button class="nav-item" data-view="overdue">⏰ Overdue</button>
+      <button class="nav-item" data-view="completed">✅ Completed</button>
+    </nav>
+
+    <div class="filter-section">
+      <div class="filter-title">Subject</div>
+      <select id="subjectFilter" class="select">
+        <option value="">All subjects</option>
+      </select>
+    </div>
+
+    <div class="filter-section">
+      <div class="filter-title">Type</div>
+      <select id="typeFilter" class="select">
+        <option value="">All types</option>
+        <option value="assignment">Assignment</option>
+        <option value="homework">Homework</option>
+        <option value="quiz">Quiz</option>
+        <option value="test">Test</option>
+        <option value="project">Project</option>
+        <option value="exam">Exam</option>
+      </select>
+    </div>
+
+    <div class="filter-section">
+      <div class="filter-title">Priority</div>
+      <select id="priorityFilter" class="select">
+        <option value="">All priorities</option>
+        <option value="high">High</option>
+        <option value="medium">Medium</option>
+        <option value="low">Low</option>
+      </select>
+    </div>
+
+    <div class="sidebar-footer">
+      <button id="exportBtn" class="ghost-btn">⬇ Export</button>
+      <label class="ghost-btn" for="importInput">⬆ Import</label>
+      <input type="file" id="importInput" accept="application/json" hidden />
+      <button id="clearCompletedBtn" class="ghost-btn danger">🗑 Clear done</button>
+    </div>
+  </aside>
+
+  <!-- Main -->
+  <main class="main">
+    <header class="topbar">
+      <div class="search-wrap">
+        <input id="searchInput" type="text" placeholder="Search assignments & tests…  (press / to focus)" />
+      </div>
+      <div class="sort-wrap">
+        <label for="sortSelect">Sort</label>
+        <select id="sortSelect" class="select">
+          <option value="due">Due date</option>
+          <option value="priority">Priority</option>
+          <option value="subject">Subject</option>
+          <option value="created">Recently added</option>
+        </select>
+      </div>
+    </header>
+
+    <section class="quick-add" id="quickAdd">
+      <form id="addForm">
+        <input id="fTitle" type="text" placeholder="Title (e.g. Chapter 4 Quiz) — press N to focus" required />
+        <input id="fSubject" type="text" list="subjectList" placeholder="Subject" required />
+        <datalist id="subjectList"></datalist>
+        <select id="fType" class="select">
+          <option value="assignment">Assignment</option>
+          <option value="homework">Homework</option>
+          <option value="quiz">Quiz</option>
+          <option value="test">Test</option>
+          <option value="project">Project</option>
+          <option value="exam">Exam</option>
+        </select>
+        <input id="fDate" type="date" required />
+        <input id="fTime" type="time" />
+        <select id="fPriority" class="select">
+          <option value="medium">Medium priority</option>
+          <option value="high">High priority</option>
+          <option value="low">Low priority</option>
+        </select>
+        <button type="submit" class="primary-btn">+ Add</button>
+      </form>
+      <textarea id="fNotes" placeholder="Notes (optional) — details, chapters, links…"></textarea>
+    </section>
+
+    <section class="list-area" id="listArea">
+      <!-- groups injected here -->
+    </section>
+
+    <div class="empty-state" id="emptyState" hidden>
+      <div class="empty-emoji">🎉</div>
+      <div class="empty-title">Nothing here</div>
+      <div class="empty-sub">You're all caught up, or nothing matches your filters.</div>
+    </div>
+  </main>
+</div>
+
+<template id="itemTemplate">
+  <div class="item-card">
+    <button class="item-check" title="Mark complete"></button>
+    <div class="item-body">
+      <div class="item-top">
+        <span class="item-title"></span>
+        <span class="item-badge item-type"></span>
+        <span class="item-badge item-priority"></span>
+      </div>
+      <div class="item-meta">
+        <span class="item-subject"></span>
+        <span class="item-due"></span>
+      </div>
+      <div class="item-notes"></div>
+    </div>
+    <div class="item-actions">
+      <button class="icon-btn edit-btn" title="Edit">✏️</button>
+      <button class="icon-btn delete-btn" title="Delete">🗑️</button>
+    </div>
+  </div>
+</template>
+
+<div class="modal-backdrop" id="editBackdrop" hidden>
+  <div class="modal">
+    <h3>Edit item</h3>
+    <form id="editForm">
+      <input id="eTitle" type="text" placeholder="Title" required />
+      <input id="eSubject" type="text" list="subjectList" placeholder="Subject" required />
+      <select id="eType" class="select">
+        <option value="assignment">Assignment</option>
+        <option value="homework">Homework</option>
+        <option value="quiz">Quiz</option>
+        <option value="test">Test</option>
+        <option value="project">Project</option>
+        <option value="exam">Exam</option>
+      </select>
+      <div class="row2">
+        <input id="eDate" type="date" required />
+        <input id="eTime" type="time" />
+      </div>
+      <select id="ePriority" class="select">
+        <option value="high">High priority</option>
+        <option value="medium">Medium priority</option>
+        <option value="low">Low priority</option>
+      </select>
+      <select id="eStatus" class="select">
+        <option value="todo">To do</option>
+        <option value="in-progress">In progress</option>
+        <option value="done">Done</option>
+      </select>
+      <textarea id="eNotes" placeholder="Notes"></textarea>
+      <div class="modal-actions">
+        <button type="button" id="eCancel" class="ghost-btn">Cancel</button>
+        <button type="submit" class="primary-btn">Save</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script src="js/app.js"></script>
+</body>
+</html>
