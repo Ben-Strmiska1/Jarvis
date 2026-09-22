@@ -36,6 +36,82 @@
     return Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
   }
 
+  // ---------- ICS (Canvas / Blackboard calendar feed) import ----------
+  function unescapeICS(s) {
+    return (s || "").replace(/\\n/gi, "\n").replace(/\\,/g, ",").replace(/\\;/g, ";").replace(/\\\\/g, "\\");
+  }
+
+  function parseICSDate(raw) {
+    if (!raw) return null;
+    const m = raw.match(/^(\d{4})(\d{2})(\d{2})(?:T(\d{2})(\d{2})(\d{2})Z?)?$/);
+    if (!m) return null;
+    const [, y, mo, d, h, mi] = m;
+    return { date: `${y}-${mo}-${d}`, time: h ? `${h}:${mi}` : "" };
+  }
+
+  function icsEventToItem(ev) {
+    const rawSummary = unescapeICS(ev.SUMMARY || "").trim();
+    if (!rawSummary) return null;
+    const dt = parseICSDate(ev.DTSTART);
+    if (!dt) return null;
+
+    // Canvas/Blackboard feeds usually append the course as "Title [COURSE CODE]"
+    let subject = "Imported";
+    let title = rawSummary;
+    const bracket = rawSummary.match(/\[([^\]]+)\]\s*$/);
+    if (bracket) {
+      subject = bracket[1].trim();
+      title = rawSummary.slice(0, bracket.index).trim();
+    }
+
+    const lower = rawSummary.toLowerCase();
+    let type = "assignment";
+    if (/\bquiz\b/.test(lower)) type = "quiz";
+    else if (/\b(final|exam)\b/.test(lower)) type = "exam";
+    else if (/\btest\b|\bmidterm\b/.test(lower)) type = "test";
+    else if (/\bproject\b/.test(lower)) type = "project";
+
+    const uidRaw = ev.UID || `${title}-${dt.date}`;
+
+    return {
+      id: "ics-" + uidRaw.replace(/[^a-zA-Z0-9_-]/g, "").slice(0, 120),
+      title,
+      subject,
+      type,
+      dueDate: dt.date,
+      dueTime: dt.time,
+      priority: "medium",
+      status: "todo",
+      notes: unescapeICS(ev.DESCRIPTION || ""),
+      createdAt: Date.now(),
+    };
+  }
+
+  function parseICS(text) {
+    // RFC5545 line folding: continuation lines start with a space/tab
+    const unfolded = text.replace(/\r\n[ \t]/g, "").replace(/\n[ \t]/g, "");
+    const lines = unfolded.split(/\r\n|\n/);
+    const events = [];
+    let cur = null;
+    for (const line of lines) {
+      if (line === "BEGIN:VEVENT") {
+        cur = {};
+        continue;
+      }
+      if (line === "END:VEVENT") {
+        if (cur) events.push(cur);
+        cur = null;
+        continue;
+      }
+      if (!cur) continue;
+      const idx = line.indexOf(":");
+      if (idx === -1) continue;
+      const key = line.slice(0, idx).split(";")[0];
+      cur[key] = line.slice(idx + 1);
+    }
+    return events.map(icsEventToItem).filter(Boolean);
+  }
+
   // ---------- date helpers ----------
   function startOfDay(d) {
     const c = new Date(d);
@@ -478,13 +554,30 @@
     if (!file) return;
     try {
       const text = await file.text();
-      const parsed = JSON.parse(text);
-      if (!Array.isArray(parsed)) throw new Error("Invalid file format");
-      if (!confirm(`Import ${parsed.length} items? This will merge with your current list.`)) return;
-      const existingIds = new Set(items.map((i) => i.id));
+      const isICS = /\.ics$/i.test(file.name) || text.trim().startsWith("BEGIN:VCALENDAR");
+
+      let parsed;
+      if (isICS) {
+        parsed = parseICS(text);
+        if (!parsed.length) throw new Error("No events found in that calendar file.");
+      } else {
+        parsed = JSON.parse(text);
+        if (!Array.isArray(parsed)) throw new Error("Invalid file format.");
+      }
+
+      const label = isICS ? "calendar events" : "items";
+      if (!confirm(`Import ${parsed.length} ${label}? New ones are added; ones you've already imported before are refreshed in place.`)) return;
+
+      const byId = new Map(items.map((i) => [i.id, i]));
       for (const raw of parsed) {
-        if (raw && raw.title && !existingIds.has(raw.id)) {
-          items.push({ ...raw, id: raw.id || uid() });
+        if (!raw || !raw.title) continue;
+        const id = raw.id || uid();
+        if (byId.has(id)) {
+          Object.assign(byId.get(id), raw, { id, status: byId.get(id).status });
+        } else {
+          const newItem = { ...raw, id };
+          items.push(newItem);
+          byId.set(id, newItem);
         }
       }
       save();
