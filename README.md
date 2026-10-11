@@ -65,6 +65,37 @@ Two ways to get something we discuss into your Notes:
 
 There's no automatic live sync from an outside conversation into your browser's storage — Claude has no direct access to it — so step 2 is always an explicit "ask, then import," not something that happens silently in the background.
 
+## Testing
+
+Playwright smoke tests cover adding/completing/deleting assignments, persistence across reloads, the theme toggle, flashcard study mode, `.ics` import (including no duplicates on re-import), and the offline Ask Jarvis fallback. They run on every push via `.github/workflows/test.yml`, or locally:
+
+```bash
+npm install
+npx playwright install chromium   # first time only
+npm test
+```
+
+## Claude connectors
+
+`.mcp.json` registers five MCP servers for anyone opening this repo in Claude Code (you'll be asked to approve them the first time). Run `/mcp` to sign in to the ones that use OAuth.
+
+| Connector | Auth | What it's for in Jarvis |
+|---|---|---|
+| **Playwright** | none (runs locally) | Drive the app in a real browser — click through flows, find broken buttons, write new tests. |
+| **Firecrawl** | OAuth via `/mcp` | Turn a syllabus, course page, or PDF into clean text → a Jarvis import `.json` of assignments and due dates. |
+| **Perplexity** | API key: `export PERPLEXITY_API_KEY=...` before launching Claude | Cited research for study guides and practice problems. |
+| **Composio** | OAuth via `/mcp`, then per-app logins | Gmail/Calendar/Slack/Notion actions, e.g. a daily "what's due" email from an exported backup. |
+| **PostHog** | OAuth via `/mcp` | Only useful if you add analytics to the app (it has none — all data stays in your browser). |
+
+Remove any you don't want from `.mcp.json`, or decline it at the approval prompt. Connector output can contain instructions, so only keep servers you trust, and never put API keys in a URL.
+
+### Prompts to try
+
+- **Playwright**: "Open http://localhost:8000 and go through adding an assignment, a flashcard deck, and an .ics import like a new user. Snapshot after each step and list anything broken or confusing."
+- **Firecrawl**: "Use firecrawl_parse on this syllabus PDF and produce a Jarvis import file (`{"items": [...]}` with title, subject, type, dueDate, priority) for every graded item."
+- **Perplexity**: "Use perplexity_research on [topic from my notes]. Write a study guide in Jarvis markdown-lite (# headings, - bullets, **bold**) with citations, plus 10 flashcards as an import file."
+- **Composio**: "Read my Jarvis export, then draft (don't send) a Gmail to me listing everything due in the next 7 days, overdue items first."
+
 ## Usage
 
 Just open `index.html` in a browser, or serve the folder with any static file server:
@@ -83,6 +114,8 @@ js/app.js       # app logic: state, storage, filtering, rendering
 manifest.json   # PWA manifest (name, icons, standalone display)
 sw.js           # service worker — caches the app shell for offline/installed use
 icons/          # app icons (192/512/maskable/apple-touch)
+tests/          # Playwright smoke tests (npm test)
+.mcp.json       # Claude Code connectors (Playwright, Firecrawl, Perplexity, Composio, PostHog)
 ```
 
 All data lives in `localStorage` under the browser you use it in — use the **Export** button in the sidebar regularly to back up your list, and **Import** to restore it or move it to another browser/device.
