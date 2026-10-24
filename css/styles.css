@@ -185,6 +185,7 @@ button, input, select, textarea {
   font-weight: 600;
   color: var(--text-dim);
 }
+a.section-item { display: block; text-decoration: none; }
 .section-item:hover { background: var(--surface-2); color: var(--text); }
 .section-item.active { background: var(--accent); color: white; }
 

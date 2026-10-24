@@ -245,7 +245,7 @@
   // ---------- section switching ----------
   el.sectionNav.addEventListener("click", (e) => {
     const btn = e.target.closest(".section-item");
-    if (!btn) return;
+    if (!btn || !btn.dataset.section) return; // plain links (e.g. Farm) navigate normally
     switchSection(btn.dataset.section);
   });
 

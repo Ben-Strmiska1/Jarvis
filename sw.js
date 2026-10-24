@@ -1,4 +1,4 @@
-const CACHE_NAME = "jarvis-hub-v1";
+const CACHE_NAME = "jarvis-hub-v2";
 const APP_SHELL = [
   "./",
   "./index.html",
@@ -27,6 +27,8 @@ self.addEventListener("activate", (event) => {
 // Cache-first for the app shell, falling back to network (and caching what we fetch).
 self.addEventListener("fetch", (event) => {
   if (event.request.method !== "GET") return;
+  // The farm game lives under /farm/ and manages its own loading; never intercept it.
+  if (new URL(event.request.url).pathname.includes("/farm/")) return;
   event.respondWith(
     caches.match(event.request).then((cached) => {
       if (cached) return cached;
