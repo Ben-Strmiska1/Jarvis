@@ -91,7 +91,11 @@ function move(e) {
   if (!start.mode) {
     if (Math.hypot(e.clientX - start.x, e.clientY - start.y) < TAP_PX) return;
     clearTimeout(start.timer);
-    if (start.long) H.longpressEnd && H.longpressEnd();
+    if (start.long) {
+      // Long-press turned into a drag: treat it as a drag so dragEnd still fires on release.
+      start.long = false;
+      H.longpressEnd && H.longpressEnd();
+    }
     start.mode = (H.dragStart && H.dragStart(start.tile)) || "pan";
   }
   if (start.mode === "pan") render.pan(e.clientX - start.lx, e.clientY - start.ly);

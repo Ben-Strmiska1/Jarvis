@@ -121,7 +121,8 @@ export function sell(id, n = Infinity) {
   const p = price(id) * q;
   take(id, q);
   earn(p);
-  addXP(Math.ceil(p / 100));
+  // 1 XP per $100 of cumulative sales, so selling one at a time gives no extra XP.
+  addXP(Math.floor(S.stats.earned / 100) - Math.floor((S.stats.earned - p) / 100));
   return p;
 }
 

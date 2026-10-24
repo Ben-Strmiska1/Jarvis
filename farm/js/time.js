@@ -60,10 +60,13 @@ export function rollover(forced = false) {
 
 // Sleeping skips the rest of the evening (crops and animals still progress through it).
 export function sleep() {
-  const rest = DAY_END - S.time.minute;
-  if (rest > 0) {
-    farming.tick(rest);
-    animals.tick(rest);
+  // Step hourly (like tick) so auto-feeders top up animals during the night.
+  let rest = DAY_END - S.time.minute;
+  while (rest > 0) {
+    const step = Math.min(60, rest);
+    farming.tick(step);
+    animals.tick(step);
+    rest -= step;
   }
   rollover(false);
 }

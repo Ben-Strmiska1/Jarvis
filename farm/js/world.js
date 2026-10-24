@@ -2,6 +2,7 @@
 import { S, nextId } from "./state.js";
 import { OBJECTS, GROUND, HOUSE_TIERS, AUTOFEED_COST } from "./data.js";
 import { emit } from "./bus.js";
+import * as economy from "./economy.js";
 
 export let W = 0;
 export let H = 0;
@@ -124,6 +125,7 @@ export function remove(id) {
   const def = OBJECTS[o.type];
   if (o.type === "house" || (def && def.removable === false)) return { ok: false, reason: "Your farmhouse can be moved, not removed" };
   if (S.animals.some((a) => a.home === id)) return { ok: false, reason: "Move the animals out first (it still has animals)" };
+  if (o.type === "silo" && economy.siloUsed() > economy.siloCap() - 250) return { ok: false, reason: "Silo still holds crops/feed — sell or use some first" };
   S.objects = S.objects.filter((p) => p.id !== id);
   rebuildOccupancy();
   emit("world:changed");
